@@ -1,9 +1,9 @@
-# Environment & secrets
+# ── Secrets ───────────────────────────────────────────────────────────────────
 .env
 .env.*
 !.env.example
 
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -16,30 +16,39 @@ build/
 .venv/
 venv/
 env/
+pip-wheel-metadata/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 
-# Database
+# ── Database ──────────────────────────────────────────────────────────────────
 data/
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 
-# Streamlit
+# ── Streamlit ─────────────────────────────────────────────────────────────────
 .streamlit/secrets.toml
 
-# Logs & temp
+# ── Logs & temp ───────────────────────────────────────────────────────────────
 *.log
 *.tmp
 /tmp/
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
+.DS_Store?
 Thumbs.db
+desktop.ini
 
-# IDEs
+# ── IDEs ──────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
 *.swo
+*.swn
 
-# Docker
+# ── Docker ────────────────────────────────────────────────────────────────────
 docker-compose.override.yml

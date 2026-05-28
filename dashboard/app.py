@@ -11,7 +11,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app.config import settings
-from app.db import get_all_quality_scores, get_all_sessions, get_or_create_budget, init_db
+from app.db import (
+    get_all_quality_scores,
+    get_all_sessions,
+    get_events_for_session,
+    get_or_create_budget,
+    init_db,
+    set_budget,
+    set_session_acu,
+)
 
 st.set_page_config(page_title="Remediation Engine", layout="wide", initial_sidebar_state="collapsed")
 
@@ -35,6 +43,10 @@ st.markdown("""
 
 .card-t { font-size: 0.88rem; font-weight: 600; color: #111; margin: 0 0 0.2rem; }
 .card-d { font-size: 0.76rem; color: #999; line-height: 1.5; margin: 0 0 0.6rem; }
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+[data-testid="stToolbar"] {display: none;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,13 +81,14 @@ def load_budget() -> dict:
     return dict(get_or_create_budget(settings.daily_acu_budget))
 
 def _cost_per_pr(df: pd.DataFrame) -> float | None:
-    done = df[df["status"].isin(["ci_passed", "merged", "completed"])]
-    if done.empty or done["acu_spent"].sum() == 0:
+    # Include pr_opened — a PR was created and cost was incurred regardless of CI outcome
+    with_pr = df[df["status"].isin(["ci_passed", "merged", "completed", "pr_opened"]) & (df["acu_spent"] > 0)]
+    if with_pr.empty:
         return None
-    return round(done["acu_spent"].mean() * 0.50, 2)
+    return round(with_pr["acu_spent"].mean() * settings.acu_usd_rate, 2)
 
 def _hours_saved(df: pd.DataFrame) -> float:
-    return len(df[df["status"].isin(["ci_passed", "merged", "completed"])]) * 4.0
+    return len(df[df["status"].isin(["ci_passed", "merged", "completed", "pr_opened"])]) * 4.0
 
 df         = load_sessions()
 quality_df = load_quality()
@@ -100,6 +113,52 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Throughput", "Cost", "Sessi
 # Tab 1 — Overview
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
+    # ── Scanners ──────────────────────────────────────────────────────────────
+    st.markdown("<div class='sec-hdr'>Scanners</div>", unsafe_allow_html=True)
+    si1, si2 = st.columns([4, 1])
+    with si1:
+        REPO_PATH = st.text_input("Repo path", value="/Users/prakhar/Desktop/Cognition/superset")
+    with si2:
+        MAX_ISSUES = st.number_input("Max issues", min_value=1, max_value=15, value=5)
+
+    sc1, sc2, sc3 = st.columns(3)
+
+    with sc1:
+        with st.container(border=True):
+            st.markdown("<p class='card-t'>CVE Scan</p><p class='card-d'>Scan requirements via OSV and create GitHub issues for vulnerable deps.</p>", unsafe_allow_html=True)
+            if st.button("Run scan", key="scan_live", type="primary", use_container_width=True):
+                with st.spinner("Scanning…"):
+                    r = subprocess.run(
+                        ["python", "scripts/scan_cves.py", "--repo-path", REPO_PATH, "--max-issues", str(MAX_ISSUES)],
+                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+                    )
+                st.code(r.stdout or r.stderr)
+
+    with sc2:
+        with st.container(border=True):
+            st.markdown("<p class='card-t'>Dry Run</p><p class='card-d'>Preview CVE scan output — no GitHub issues created.</p>", unsafe_allow_html=True)
+            if st.button("Preview", key="scan_dry", use_container_width=True):
+                with st.spinner("Scanning…"):
+                    r = subprocess.run(
+                        ["python", "scripts/scan_cves.py", "--repo-path", REPO_PATH, "--max-issues", str(MAX_ISSUES), "--dry-run"],
+                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+                    )
+                st.code(r.stdout or r.stderr)
+
+    with sc3:
+        with st.container(border=True):
+            st.markdown("<p class='card-t'>Quality Scan</p><p class='card-d'>Run mypy on superset/utils and create type-hint issues.</p>", unsafe_allow_html=True)
+            if st.button("Run scan", key="scan_quality", use_container_width=True):
+                with st.spinner("Running mypy…"):
+                    r = subprocess.run(
+                        ["python", "scripts/scan_quality.py", "--repo-path", REPO_PATH],
+                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+                    )
+                st.code(r.stdout or r.stderr)
+
+    st.divider()
+
+    # ── KPIs ──────────────────────────────────────────────────────────────────
     merged_count = len(df[df["status"].isin(["ci_passed", "merged", "completed"])]) if not df.empty else 0
     cost_per_pr  = _cost_per_pr(df) if not df.empty else None
     hours        = _hours_saved(df) if not df.empty else 0.0
@@ -137,17 +196,22 @@ with tab1:
         c4.metric("Failed",     len(df[df["status"] == "failed"]))
 
         st.markdown("<div class='sec-hdr'>PRs closed per day</div>", unsafe_allow_html=True)
-        daily = (
-            df[df["status"].isin(["ci_passed", "merged", "completed"])]
-            .groupby(df["started_at"].dt.date).size().reset_index(name="count")
-        )
-        if daily.empty:
-            st.caption("No closed PRs yet — Devin is working.")
-        else:
-            fig = go.Figure(go.Bar(x=daily["started_at"], y=daily["count"],
-                                   marker_color="#111", marker_line_width=0))
-            fig.update_layout(**PL, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+        week_dates = [(pd.Timestamp.today() - pd.Timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)]
+        closed = df[df["status"].isin(["ci_passed", "merged", "completed"])].copy()
+        closed["date"] = closed["started_at"].dt.strftime("%Y-%m-%d")
+        daily_counts = closed[closed["date"].isin(week_dates)].groupby("date").size()
+        daily = pd.DataFrame({"date": week_dates, "count": [daily_counts.get(d, 0) for d in week_dates]})
+
+        fig = go.Figure(go.Bar(
+            x=daily["date"], y=daily["count"],
+            marker_color="#6366F1", marker_line_width=0,
+            hovertemplate="%{x}<br>%{y} PR(s)<extra></extra>",
+        ))
+        bar_layout = {**PL, "showlegend": False, "height": 220}
+        bar_layout["xaxis"] = dict(type="category", tickfont=dict(size=10, color="#aaa"), showgrid=False)
+        bar_layout["yaxis"] = dict(showgrid=True, gridcolor="#eeeeec", dtick=1, tickfont=dict(size=10, color="#aaa"))
+        fig.update_layout(**bar_layout)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     st.divider()
     st.markdown(
@@ -195,7 +259,7 @@ with tab2:
         funnel_layout["xaxis"] = dict(showgrid=False, visible=False)
         funnel_layout["yaxis"] = dict(showgrid=False)
         fig.update_layout(**funnel_layout)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
         if not quality_df.empty:
             st.markdown("<div class='sec-hdr'>Quality by playbook</div>", unsafe_allow_html=True)
@@ -213,6 +277,17 @@ with tab2:
 # Tab 3 — Cost
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
+    _, cc2 = st.columns([5, 1])
+    with cc2:
+        if st.button("Sync Costs", key="sync_costs_tab3", use_container_width=True):
+            with st.spinner("Syncing…"):
+                r = subprocess.run(
+                    ["python", "scripts/sync_costs.py"],
+                    capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+                )
+            st.cache_data.clear()
+            st.code(r.stdout or r.stderr)
+
     acu_spent = budget.get("acu_spent", 0)
     acu_limit = budget.get("acu_budget", settings.daily_acu_budget)
     pct       = min(acu_spent / acu_limit, 1.0) if acu_limit else 0
@@ -243,11 +318,11 @@ with tab3:
         c1.metric("Total ACU spent", f"{total_acu:.1f}" if total_acu > 0 else "—")
         c2.metric("Avg cost / PR",   f"${cost_per_pr:.2f}" if cost_per_pr is not None else "—")
 
-        done = df[df["status"].isin(["ci_passed", "merged", "completed"])]
+        done = df[df["status"].isin(["ci_passed", "merged", "completed", "pr_opened"]) & (df["acu_spent"] > 0)]
         if not done.empty:
             st.markdown("<div class='sec-hdr'>Cost by playbook</div>", unsafe_allow_html=True)
             by_p = done.groupby("playbook").agg(sessions=("id", "count"), avg_acu=("acu_spent", "mean")).reset_index()
-            by_p["avg_cost"] = (by_p["avg_acu"] * 0.50).round(2)
+            by_p["avg_cost"] = (by_p["avg_acu"] * settings.acu_usd_rate).round(2)
             by_p.columns = ["Playbook", "Sessions", "Avg ACU", "Avg $/PR"]
             st.dataframe(by_p, use_container_width=True, hide_index=True)
     else:
@@ -282,13 +357,27 @@ with tab4:
         selected_id = st.selectbox("Session", df["id"].tolist(), label_visibility="collapsed")
 
         if selected_id:
-            from app.db import get_events_for_session
             row = df[df["id"] == selected_id].iloc[0]
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Status",    row["status"])
-            c2.metric("ACU spent", f"{row['acu_spent']:.2f}")
+            c2.metric("ACU spent", f"{row['acu_spent']:.2f}" if row["acu_spent"] > 0 else "—")
             c3.metric("Retries",   int(row["retry_count"]))
+
+            # Manual ACU entry — Devin API doesn't return acu_consumed for this plan
+            with st.expander("Set ACU cost manually"):
+                ac1, ac2 = st.columns([3, 1])
+                with ac1:
+                    manual_acu = st.number_input(
+                        "ACU spent", min_value=0.0, max_value=100.0,
+                        value=float(row["acu_spent"]), step=0.5,
+                        key=f"acu_{selected_id}", label_visibility="collapsed",
+                    )
+                with ac2:
+                    if st.button("Save", key=f"save_acu_{selected_id}", type="primary", use_container_width=True):
+                        set_session_acu(selected_id, manual_acu)
+                        st.cache_data.clear()
+                        st.success(f"Set to {manual_acu} ACU (≈ ${manual_acu * settings.acu_usd_rate:.2f})")
 
             links = []
             if row.get("pr_url"):
@@ -313,59 +402,49 @@ with tab4:
 # Tab 5 — Controls
 # ══════════════════════════════════════════════════════════════════════════════
 with tab5:
-    REPO_PATH  = st.text_input("Superset repo path", value="/Users/prakhar/Desktop/Cognition/superset")
-    MAX_ISSUES = st.slider("Max issues to create", 1, 15, 5)
-    st.divider()
-
-    # ── Scanners ──────────────────────────────────────────────────────────────
-    st.markdown("<div class='sec-hdr'>Scanners</div>", unsafe_allow_html=True)
-    col_a, col_b, col_c = st.columns(3)
-
-    with col_a:
-        with st.container(border=True):
-            st.markdown("<p class='card-t'>CVE Scan</p><p class='card-d'>Scan requirements files via OSV and create GitHub issues for vulnerable deps.</p>", unsafe_allow_html=True)
-            if st.button("Run scan", key="scan_live", type="primary", use_container_width=True):
-                with st.spinner("Scanning…"):
-                    r = subprocess.run(
-                        ["python", "scripts/scan_cves.py", "--repo-path", REPO_PATH, "--max-issues", str(MAX_ISSUES)],
-                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
-                    )
-                st.code(r.stdout or r.stderr)
-
-    with col_b:
-        with st.container(border=True):
-            st.markdown("<p class='card-t'>Dry Run</p><p class='card-d'>Preview what the CVE scan would create — no GitHub writes.</p>", unsafe_allow_html=True)
-            if st.button("Preview", key="scan_dry", use_container_width=True):
-                with st.spinner("Scanning…"):
-                    r = subprocess.run(
-                        ["python", "scripts/scan_cves.py", "--repo-path", REPO_PATH, "--max-issues", str(MAX_ISSUES), "--dry-run"],
-                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
-                    )
-                st.code(r.stdout or r.stderr)
-
-    with col_c:
-        with st.container(border=True):
-            st.markdown("<p class='card-t'>Quality Scan</p><p class='card-d'>Run mypy on superset/utils and create type-hint issues.</p>", unsafe_allow_html=True)
-            if st.button("Run scan", key="scan_quality", use_container_width=True):
-                with st.spinner("Running mypy…"):
-                    r = subprocess.run(
-                        ["python", "scripts/scan_quality.py", "--repo-path", REPO_PATH],
-                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
-                    )
-                st.code(r.stdout or r.stderr)
+    # ── Budget ────────────────────────────────────────────────────────────────
+    st.markdown("<div class='sec-hdr'>Daily ACU Budget</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        current_limit = budget.get("acu_budget", settings.daily_acu_budget)
+        bc1, bc2 = st.columns([3, 1])
+        with bc1:
+            new_budget = st.number_input(
+                "ACU limit per day", min_value=1.0, max_value=500.0,
+                value=float(current_limit), step=5.0, label_visibility="collapsed",
+            )
+        with bc2:
+            if st.button("Save", key="save_budget", type="primary", use_container_width=True):
+                set_budget(new_budget)
+                st.cache_data.clear()
+                st.success(f"Budget updated to {new_budget} ACU")
 
     # ── Sync ──────────────────────────────────────────────────────────────────
     st.markdown("<div class='sec-hdr'>Sync</div>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.markdown("<p class='card-t'>Sync PRs from GitHub</p><p class='card-d'>Devin opens PRs while sessions are still running. This reads GitHub and backfills PR URLs into the database.</p>", unsafe_allow_html=True)
-        if st.button("Sync PRs", key="sync_prs", type="primary", use_container_width=False):
-            with st.spinner("Syncing…"):
-                r = subprocess.run(
-                    ["python", "scripts/sync_prs.py"],
-                    capture_output=True, text=True, cwd=Path(__file__).parent.parent,
-                )
-            st.code(r.stdout or r.stderr)
-            st.cache_data.clear()
+    sync_col_a, sync_col_b = st.columns(2)
+
+    with sync_col_a:
+        with st.container(border=True):
+            st.markdown("<p class='card-t'>Sync PRs from GitHub</p><p class='card-d'>Devin opens PRs while sessions are still running. This reads GitHub and backfills PR URLs into the database.</p>", unsafe_allow_html=True)
+            if st.button("Sync PRs", key="sync_prs", type="primary", use_container_width=True):
+                with st.spinner("Syncing…"):
+                    r = subprocess.run(
+                        ["python", "scripts/sync_prs.py"],
+                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+                    )
+                st.code(r.stdout or r.stderr)
+                st.cache_data.clear()
+
+    with sync_col_b:
+        with st.container(border=True):
+            st.markdown("<p class='card-t'>Sync Costs</p><p class='card-d'>Pull ACU costs from Devin v3 API (or title-match from COST_TABLE) and update session spend in the database.</p>", unsafe_allow_html=True)
+            if st.button("Sync Costs", key="sync_costs_controls", type="primary", use_container_width=True):
+                with st.spinner("Syncing…"):
+                    r = subprocess.run(
+                        ["python", "scripts/sync_costs.py"],
+                        capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+                    )
+                st.code(r.stdout or r.stderr)
+                st.cache_data.clear()
 
     # ── Maintenance ───────────────────────────────────────────────────────────
     st.markdown("<div class='sec-hdr'>Maintenance</div>", unsafe_allow_html=True)

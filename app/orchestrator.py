@@ -28,7 +28,12 @@ def _make_idempotency_key(issue_number: int, attempt: int) -> str:
 
 def _get_clients() -> tuple[DevinClient, GitHubClient]:
     return (
-        DevinClient(settings.devin_api_key),
+        DevinClient(
+            settings.devin_api_key,
+            service_key=settings.devin_service_key,
+            org_id=settings.devin_org_id,
+            acu_usd_rate=settings.acu_usd_rate,
+        ),
         GitHubClient(settings.github_token, settings.github_owner, settings.github_repo),
     )
 
@@ -167,13 +172,30 @@ def poll_running_sessions() -> None:
             logger.error("orchestrator poll_error session=%d error=%s", row["id"], exc)
 
 
+_TERMINAL_STATUSES = {SessionStatus.COMPLETED, SessionStatus.STOPPED, SessionStatus.ABANDONED}
+
+
+def _fetch_and_store_cost(session_id: int, devin_session_id: str, devin: DevinClient) -> float:
+    """Pull real ACU cost from v3 API and persist it; returns ACU value."""
+    cost = devin.get_session_cost(devin_session_id)
+    if cost is None:
+        return 0.0
+    from app.db import set_session_acu
+    set_session_acu(session_id, cost["acus"])
+    logger.info(
+        "orchestrator cost_fetched session=%d acus=%.2f usd=%.2f",
+        session_id, cost["acus"], cost["usd"],
+    )
+    return cost["acus"]
+
+
 def _process_session_update(row, ds, devin: DevinClient, gh: GitHubClient) -> None:
     session_id = row["id"]
     acu_delta = ds.acu_consumed - (row["acu_spent"] or 0)
     if acu_delta > 0:
         add_acu_spent(acu_delta)
 
-    # Budget kill switch
+    # Budget kill switch (uses live acu_consumed from v1 as proxy while running)
     if ds.acu_consumed >= (row["acu_spent"] or 0) + settings.per_session_acu_cap:
         devin.cancel_session(ds.session_id)
         update_session(
@@ -189,7 +211,11 @@ def _process_session_update(row, ds, devin: DevinClient, gh: GitHubClient) -> No
         )
         return
 
-    updates: dict = {"acu_spent": ds.acu_consumed}
+    # Only overwrite acu_spent if the API returned a real value.
+    # When acu_consumed is 0 (plan limitation), preserve any manually synced cost.
+    updates: dict = {}
+    if ds.acu_consumed > 0:
+        updates["acu_spent"] = ds.acu_consumed
 
     if ds.status == SessionStatus.COMPLETED:
         updates["status"] = "pr_opened" if ds.pr_url else "completed"
@@ -202,7 +228,16 @@ def _process_session_update(row, ds, devin: DevinClient, gh: GitHubClient) -> No
         updates["failure_reason"] = "Devin session stopped"
         log_event(session_id, "session_stopped")
 
+    elif ds.status == SessionStatus.ABANDONED:
+        updates["status"] = "failed"
+        updates["failure_reason"] = "Devin session abandoned"
+        log_event(session_id, "session_abandoned")
+
     update_session(session_id, **updates)
+
+    # Fetch real cost from v3 API once session reaches a terminal state
+    if ds.status in _TERMINAL_STATUSES and row["devin_session_id"]:
+        _fetch_and_store_cost(session_id, row["devin_session_id"], devin)
 
 
 def _get_playbook_for_session(row):

@@ -33,11 +33,25 @@ class Session(BaseModel):
 
 
 class DevinClient:
-    def __init__(self, api_key: str, max_retries: int = 3) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        max_retries: int = 3,
+        service_key: str = "",
+        org_id: str = "",
+        acu_usd_rate: float = 2.25,
+    ) -> None:
         self._headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        self._service_headers = (
+            {"Authorization": f"Bearer {service_key}", "Content-Type": "application/json"}
+            if service_key
+            else None
+        )
+        self._org_id = org_id
+        self._acu_usd_rate = acu_usd_rate
         self._max_retries = max_retries
 
     def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
@@ -95,6 +109,33 @@ class DevinClient:
         params = {"status": status} if status else {}
         data = self._request("GET", "/sessions", params=params)
         return [self._parse_session(s) for s in data.get("sessions", [])]
+
+    def get_session_cost(self, devin_session_id: str) -> dict[str, float] | None:
+        """Fetch ACU consumption for a session via the v3 cost endpoint.
+
+        Requires a service user token with ManageBilling org permission.
+        Returns {"acus": float, "usd": float} or None if unavailable.
+        """
+        if not self._service_headers or not self._org_id:
+            logger.debug("get_session_cost skipped: no service key or org_id configured")
+            return None
+        try:
+            url = (
+                f"{DEVIN_API_BASE.replace('/v1', '')}"
+                f"/v3/organizations/{self._org_id}"
+                f"/consumption/daily/sessions/{devin_session_id}"
+            )
+            r = httpx.get(url, headers=self._service_headers, timeout=15)
+            if r.status_code == 403:
+                logger.warning("get_session_cost 403: service key missing ManageBilling permission")
+                return None
+            r.raise_for_status()
+            data = r.json()
+            acus = float(data.get("total_acus") or 0)
+            return {"acus": acus, "usd": round(acus * self._acu_usd_rate, 2)}
+        except Exception as exc:
+            logger.warning("get_session_cost error session=%s error=%s", devin_session_id, exc)
+            return None
 
     @staticmethod
     def _parse_session(data: dict[str, Any]) -> Session:

@@ -30,6 +30,9 @@ clear-db:
 sync-prs:
 	python scripts/sync_prs.py
 
+sync-costs:
+	python scripts/sync_costs.py
+
 close-issues:
 	python scripts/close_issues.py
 
@@ -39,9 +42,12 @@ reset: close-issues clear-db
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 docker-up:
-	docker compose up --build
+	docker compose up --build -d
 
 docker-down:
 	docker compose down
 
-.PHONY: api dashboard scan scan-dry scan-quality seed clear-db sync-prs close-issues reset docker-up docker-down
+docker-logs:
+	docker compose logs -f
+
+.PHONY: api dashboard scan scan-dry scan-quality seed clear-db sync-prs sync-costs close-issues reset docker-up docker-down docker-logs

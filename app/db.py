@@ -177,6 +177,30 @@ def add_acu_spent(amount: float) -> None:
         )
 
 
+def set_budget(new_limit: float) -> None:
+    today = date.today().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO budget (date, acu_spent, acu_budget) VALUES (?, 0, ?) "
+            "ON CONFLICT(date) DO UPDATE SET acu_budget = excluded.acu_budget",
+            (today, new_limit),
+        )
+
+
+def set_session_acu(session_id: int, acu: float) -> None:
+    today = date.today().isoformat()
+    with get_conn() as conn:
+        old = conn.execute("SELECT acu_spent FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        old_acu = old["acu_spent"] if old else 0.0
+        conn.execute("UPDATE sessions SET acu_spent = ? WHERE id = ?", (acu, session_id))
+        delta = acu - old_acu
+        if delta > 0:
+            conn.execute(
+                "UPDATE budget SET acu_spent = acu_spent + ? WHERE date = ?",
+                (delta, today),
+            )
+
+
 # ── quality scores ────────────────────────────────────────────────────────────
 
 def upsert_quality_score(pr_url: str, session_id: int, scores: dict[str, float]) -> None:
