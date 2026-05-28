@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Dollars per ACU — set to match your Devin plan rate
     acu_usd_rate: float = 2.25
 
+    # Path to your local superset fork — /superset in Docker (mounted volume)
+    superset_repo_path: str = "/superset"
+
     database_path: str = "./data/remediation.db"
     api_host: str = "0.0.0.0"
     api_port: int = 8080

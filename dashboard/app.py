@@ -1,4 +1,4 @@
-"""Streamlit dashboard for the Devin Remediation Engine."""
+"""Streamlit dashboard for Autopatch."""
 
 import subprocess
 import sys
@@ -21,7 +21,7 @@ from app.db import (
     set_session_acu,
 )
 
-st.set_page_config(page_title="Remediation Engine", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Autopatch", layout="wide", initial_sidebar_state="collapsed")
 
 # Minimal CSS — only custom classes, nothing that touches Streamlit internals.
 # config.toml handles primaryColor (tab underline, slider, buttons).
@@ -97,7 +97,7 @@ budget     = load_budget()
 # ── Header ────────────────────────────────────────────────────────────────────
 hc1, hc2 = st.columns([4, 1])
 with hc1:
-    st.markdown("## Remediation Engine")
+    st.markdown("## Autopatch")
 with hc2:
     repo_url = f"https://github.com/{settings.github_owner}/{settings.github_repo}"
     st.markdown(
@@ -115,11 +115,8 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Throughput", "Cost", "Sessi
 with tab1:
     # ── Scanners ──────────────────────────────────────────────────────────────
     st.markdown("<div class='sec-hdr'>Scanners</div>", unsafe_allow_html=True)
-    si1, si2 = st.columns([4, 1])
-    with si1:
-        REPO_PATH = st.text_input("Repo path", value="/Users/prakhar/Desktop/Cognition/superset")
-    with si2:
-        MAX_ISSUES = st.number_input("Max issues", min_value=1, max_value=15, value=5)
+    REPO_PATH = settings.superset_repo_path
+    MAX_ISSUES = st.number_input("Max issues", min_value=1, max_value=15, value=5)
 
     sc1, sc2, sc3 = st.columns(3)
 

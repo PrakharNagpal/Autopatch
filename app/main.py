@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="Devin Remediation Engine", lifespan=lifespan)
+app = FastAPI(title="Autopatch", lifespan=lifespan)
 
 
 # ── HMAC verification ─────────────────────────────────────────────────────────

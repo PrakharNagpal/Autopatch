@@ -1,4 +1,4 @@
-# Devin CVE Remediation Engine
+# Autopatch
 
 > An event-driven platform that autonomously closes dependency CVEs using Devin as the AI worker — with a self-correcting CI feedback loop and an observability dashboard.
 
@@ -50,8 +50,8 @@ GitHub Issue (labeled devin-remediate)
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/<your-username>/devin-remediation-engine
-cd devin-remediation-engine
+git clone https://github.com/PrakharNagpal/Autopatch
+cd Autopatch
 
 # 2. Configure environment
 cp .env.example .env
@@ -66,6 +66,9 @@ GITHUB_OWNER=your-github-username
 GITHUB_REPO=superset              # name of your fork
 DAILY_ACU_BUDGET=50
 PER_SESSION_ACU_CAP=10
+
+# Absolute path to your local superset fork — Docker mounts this at /superset
+SUPERSET_REPO_PATH=/path/to/your/superset-fork
 ```
 
 ```bash
@@ -86,13 +89,13 @@ To tail logs: `docker compose logs -f`
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/<your-username>/devin-remediation-engine
-cd devin-remediation-engine
+git clone https://github.com/PrakharNagpal/Autopatch
+cd Autopatch
 pip install -r requirements.txt
 
 # 2. Configure
 cp .env.example .env
-# fill in .env (same fields as above)
+# fill in .env — same fields as Docker above, including SUPERSET_REPO_PATH
 
 # 3. Start the API server
 uvicorn app.main:app --reload --port 8080
@@ -190,7 +193,7 @@ In Docker, point the webhook at your server's public IP on port 8080.
 ## Architecture
 
 ```
-devin-remediation-engine/
+Autopatch/
 ├── app/
 │   ├── main.py              # FastAPI — webhooks, health, metrics
 │   ├── orchestrator.py      # Eligibility gate, dispatch, polling, CI loop
@@ -261,7 +264,7 @@ The orchestrator, webhook handler, and dashboard pick it up automatically.
 
 ## Superset Fork
 
-The remediation engine operates against a fork of Apache Superset:  
+Autopatch operates against a fork of Apache Superset:  
 **[github.com/PrakharNagpal/superset](https://github.com/PrakharNagpal/superset)**
 
 Original repository: [github.com/apache/superset](https://github.com/apache/superset)

@@ -9,8 +9,10 @@ services:
       - .env
     environment:
       - DATABASE_PATH=/data/remediation.db
+      - SUPERSET_REPO_PATH=/superset
     volumes:
       - db_data:/data
+      - ${SUPERSET_REPO_PATH:-../superset}:/superset:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/health').raise_for_status()"]
@@ -29,8 +31,10 @@ services:
       - .env
     environment:
       - DATABASE_PATH=/data/remediation.db
+      - SUPERSET_REPO_PATH=/superset
     volumes:
       - db_data:/data
+      - ${SUPERSET_REPO_PATH:-../superset}:/superset:ro
     depends_on:
       api:
         condition: service_healthy
