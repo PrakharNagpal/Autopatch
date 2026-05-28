@@ -19,6 +19,8 @@ class SessionStatus(str, Enum):
     BLOCKED = "blocked"
     COMPLETED = "completed"
     STOPPED = "stopped"
+    ABANDONED = "abandoned"
+    SUSPENDED = "suspended"
 
 
 class Session(BaseModel):
@@ -96,10 +98,22 @@ class DevinClient:
 
     @staticmethod
     def _parse_session(data: dict[str, Any]) -> Session:
+        # pr_url: check pull_request.url first (available while running),
+        # fall back to structured_output.pr_url (only set on completion)
+        pr_url = (
+            (data.get("pull_request") or {}).get("url")
+            or (data.get("structured_output") or {}).get("pr_url")
+        )
+        # status_enum is more granular than status (e.g. "blocked" vs "running")
+        raw_status = data.get("status_enum") or data.get("status", "queued")
+        try:
+            status = SessionStatus(raw_status)
+        except ValueError:
+            status = SessionStatus.RUNNING
         return Session(
             session_id=data["session_id"],
-            status=SessionStatus(data.get("status", "queued")),
+            status=status,
             url=data.get("url"),
             acu_consumed=float(data.get("acu_consumed", 0)),
-            pr_url=data.get("structured_output", {}).get("pr_url") if data.get("structured_output") else None,
+            pr_url=pr_url,
         )

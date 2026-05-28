@@ -68,9 +68,11 @@ def load_quality() -> pd.DataFrame:
 def load_budget() -> dict:
     return dict(get_or_create_budget(settings.daily_acu_budget))
 
-def _cost_per_pr(df: pd.DataFrame) -> float:
+def _cost_per_pr(df: pd.DataFrame) -> float | None:
     done = df[df["status"].isin(["ci_passed", "merged", "completed"])]
-    return round(done["acu_spent"].mean() * 0.50, 2) if not done.empty and done["acu_spent"].sum() > 0 else 0.0
+    if done.empty or done["acu_spent"].sum() == 0:
+        return None
+    return round(done["acu_spent"].mean() * 0.50, 2)
 
 def _hours_saved(df: pd.DataFrame) -> float:
     return len(df[df["status"].isin(["ci_passed", "merged", "completed"])]) * 4.0
@@ -99,14 +101,16 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Throughput", "Cost", "Sessi
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
     merged_count = len(df[df["status"].isin(["ci_passed", "merged", "completed"])]) if not df.empty else 0
-    cost_per_pr  = _cost_per_pr(df) if not df.empty else 0.0
+    cost_per_pr  = _cost_per_pr(df) if not df.empty else None
     hours        = _hours_saved(df) if not df.empty else 0.0
+
+    cost_str = f"${cost_per_pr:.2f}" if cost_per_pr is not None else "—"
 
     c1, c2, c3 = st.columns(3)
     for col, val, lbl in [
-        (c1, str(merged_count),     "CVEs closed"),
-        (c2, f"${cost_per_pr:.2f}", "Avg cost / PR"),
-        (c3, f"{hours:.0f} hrs",    "Eng. time saved"),
+        (c1, str(merged_count), "CVEs closed"),
+        (c2, cost_str,          "Avg cost / PR"),
+        (c3, f"{hours:.0f} hrs", "Eng. time saved"),
     ]:
         with col:
             st.markdown(
@@ -187,9 +191,10 @@ with tab2:
             marker_line_width=0, text=counts, textposition="outside",
             textfont=dict(size=11, color="#aaa"),
         ))
-        fig.update_layout(**PL, showlegend=False, height=280,
-                          xaxis=dict(showgrid=False, visible=False),
-                          yaxis=dict(showgrid=False))
+        funnel_layout = {**PL, "showlegend": False, "height": 280}
+        funnel_layout["xaxis"] = dict(showgrid=False, visible=False)
+        funnel_layout["yaxis"] = dict(showgrid=False)
+        fig.update_layout(**funnel_layout)
         st.plotly_chart(fig, use_container_width=True)
 
         if not quality_df.empty:
@@ -230,13 +235,13 @@ with tab3:
         )
 
     if not df.empty:
-        total_acu = df["acu_spent"].sum()
+        total_acu   = df["acu_spent"].sum()
         cost_per_pr = _cost_per_pr(df)
 
         st.markdown("<div class='sec-hdr'>All-time</div>", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
-        c1.metric("Total ACU spent", f"{total_acu:.1f}")
-        c2.metric("Avg cost / PR",   f"${cost_per_pr:.2f}")
+        c1.metric("Total ACU spent", f"{total_acu:.1f}" if total_acu > 0 else "—")
+        c2.metric("Avg cost / PR",   f"${cost_per_pr:.2f}" if cost_per_pr is not None else "—")
 
         done = df[df["status"].isin(["ci_passed", "merged", "completed"])]
         if not done.empty:
@@ -348,6 +353,19 @@ with tab5:
                         capture_output=True, text=True, cwd=Path(__file__).parent.parent,
                     )
                 st.code(r.stdout or r.stderr)
+
+    # ── Sync ──────────────────────────────────────────────────────────────────
+    st.markdown("<div class='sec-hdr'>Sync</div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<p class='card-t'>Sync PRs from GitHub</p><p class='card-d'>Devin opens PRs while sessions are still running. This reads GitHub and backfills PR URLs into the database.</p>", unsafe_allow_html=True)
+        if st.button("Sync PRs", key="sync_prs", type="primary", use_container_width=False):
+            with st.spinner("Syncing…"):
+                r = subprocess.run(
+                    ["python", "scripts/sync_prs.py"],
+                    capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+                )
+            st.code(r.stdout or r.stderr)
+            st.cache_data.clear()
 
     # ── Maintenance ───────────────────────────────────────────────────────────
     st.markdown("<div class='sec-hdr'>Maintenance</div>", unsafe_allow_html=True)

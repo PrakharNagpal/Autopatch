@@ -27,6 +27,9 @@ clear-db:
 	python scripts/clear_db.py
 
 # ── Issues ────────────────────────────────────────────────────────────────────
+sync-prs:
+	python scripts/sync_prs.py
+
 close-issues:
 	python scripts/close_issues.py
 
@@ -41,4 +44,4 @@ docker-up:
 docker-down:
 	docker compose down
 
-.PHONY: api dashboard scan scan-dry scan-quality seed clear-db close-issues reset docker-up docker-down
+.PHONY: api dashboard scan scan-dry scan-quality seed clear-db sync-prs close-issues reset docker-up docker-down
