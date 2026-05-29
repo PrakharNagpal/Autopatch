@@ -37,11 +37,19 @@ GitHub Issue (labeled devin-remediate)
 
 **Overview — KPIs, scan controls, and weekly PR chart**
 
-![Autopatch Overview](screenshots/Screenshot%202026-05-29%20at%201.36.28%20PM.png)
+![Autopatch Overview](screenshots/dashboard-overview.png)
 
 **Sessions — live Devin session table with ACU spend and status**
 
-![Autopatch Sessions](screenshots/Screenshot%202026-05-29%20at%201.36.40%20PM.png)
+![Autopatch Sessions](screenshots/dashboard-sessions.png)
+
+**GitHub Issues — auto-generated CVE and type-hint issues**
+
+![GitHub Issues](screenshots/github-issues.png)
+
+**GitHub Pull Requests — Devin-opened PRs awaiting merge**
+
+![GitHub Pull Requests](screenshots/github-prs.png)
 
 ---
 
