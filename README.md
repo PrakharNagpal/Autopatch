@@ -33,6 +33,18 @@ GitHub Issue (labeled devin-remediate)
 
 ---
 
+## Screenshots
+
+**Overview — KPIs, scan controls, and weekly PR chart**
+
+![Autopatch Overview](screenshots/Screenshot%202026-05-29%20at%201.36.28%20PM.png)
+
+**Sessions — live Devin session table with ACU spend and status**
+
+![Autopatch Sessions](screenshots/Screenshot%202026-05-29%20at%201.36.40%20PM.png)
+
+---
+
 ## Prerequisites
 
 | Requirement | Details |
@@ -176,17 +188,23 @@ In Docker, point the webhook at your server's public IP on port 8080.
 
 | Issue | CVE | Package | PR | Status |
 |---|---|---|---|---|
+| [#6](https://github.com/PrakharNagpal/superset/issues/6) | CVE-2026-44431 | urllib3 | — | Closed |
+| [#7](https://github.com/PrakharNagpal/superset/issues/7) | CVE-2026-41425 | authlib | — | Closed |
+| [#8](https://github.com/PrakharNagpal/superset/issues/8) | CVE-2026-44681 | authlib | — | Closed |
+| [#9](https://github.com/PrakharNagpal/superset/issues/9) | CVE-2025-66034 | fonttools | — | Closed |
+| [#10](https://github.com/PrakharNagpal/superset/issues/10) | CVE-2026-23949 | jaraco-context | — | Closed |
 | [#12](https://github.com/PrakharNagpal/superset/issues/12) | CVE-2026-27205 | flask | [#19](https://github.com/PrakharNagpal/superset/pull/19) | PR opened |
 | [#13](https://github.com/PrakharNagpal/superset/issues/13) | CVE-2026-45409 | idna | [#21](https://github.com/PrakharNagpal/superset/pull/21) | Merged |
 | [#14](https://github.com/PrakharNagpal/superset/issues/14) | CVE-2026-44307 | mako | [#17](https://github.com/PrakharNagpal/superset/pull/17) | PR opened |
 | [#15](https://github.com/PrakharNagpal/superset/issues/15) | CVE-2026-25087 | pyarrow | [#20](https://github.com/PrakharNagpal/superset/pull/20) | PR opened |
 | [#16](https://github.com/PrakharNagpal/superset/issues/16) | CVE-2026-44432 | urllib3 | [#18](https://github.com/PrakharNagpal/superset/pull/18) | PR opened |
-| [#22](https://github.com/PrakharNagpal/superset/issues/22) | — | type-hints (superset/utils) | — | In progress |
-| [#23](https://github.com/PrakharNagpal/superset/issues/23) | — | type-hints (superset/utils) | — | In progress |
-| [#24](https://github.com/PrakharNagpal/superset/issues/24) | — | type-hints (superset/utils) | — | In progress |
-| [#25](https://github.com/PrakharNagpal/superset/issues/25) | — | type-hints (superset/utils) | — | In progress |
-| [#26](https://github.com/PrakharNagpal/superset/issues/26) | — | type-hints (superset/utils) | — | In progress |
-| [#27](https://github.com/PrakharNagpal/superset/issues/27) | — | type-hints (superset/utils) | — | In progress |
+| [#22](https://github.com/PrakharNagpal/superset/issues/22) | — | type-hints (`superset/utils/core.py`) | [#29](https://github.com/PrakharNagpal/superset/pull/29) | Merged |
+| [#23](https://github.com/PrakharNagpal/superset/issues/23) | — | type-hints (`superset/security/manager.py`) | [#28](https://github.com/PrakharNagpal/superset/pull/28) | Merged |
+| [#24](https://github.com/PrakharNagpal/superset/issues/24) | — | type-hints | — | In progress |
+| [#25](https://github.com/PrakharNagpal/superset/issues/25) | — | type-hints (`superset/mcp_service/chart/tool/get_chart_preview.py`) | [#30](https://github.com/PrakharNagpal/superset/pull/30) | Merged |
+| [#26](https://github.com/PrakharNagpal/superset/issues/26) | — | type-hints | [#32](https://github.com/PrakharNagpal/superset/pull/32) | PR opened |
+| [#27](https://github.com/PrakharNagpal/superset/issues/27) | — | type-hints | [#31](https://github.com/PrakharNagpal/superset/pull/31) | PR opened |
+| [#33](https://github.com/PrakharNagpal/superset/issues/33) | — | gunicorn (21.2.0 → 22.0.0) | — | Closed |
 
 ---
 
